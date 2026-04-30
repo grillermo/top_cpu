@@ -105,7 +105,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.offset = m.syncedOffset()
 			}
 
-		case tea.KeyDelete:
+		case tea.KeyF1:
 			if len(m.displayList) > 0 {
 				name := m.displayList[m.cursor].name
 				next := make(map[string]struct{}, len(m.excluded)+1)
@@ -178,7 +178,7 @@ func (m model) View() string {
 
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("↑↓ navigate  type to filter  Supr exclude  q quit"))
+	sb.WriteString(helpStyle.Render("↑↓ navigate  type to filter  F1 exclude  q quit"))
 
 	return sb.String()
 }

@@ -47,7 +47,7 @@ go build -o top_cpu .
 | Type anything | Filter list live (case-insensitive) |
 | `Backspace` | Remove last filter character |
 | `Esc` | Clear filter |
-| `Supr` | Exclude process at cursor |
+| `F1` | Exclude process at cursor |
 | `q` or `Ctrl+C` | Quit |
 
 ## Process Exclusion
