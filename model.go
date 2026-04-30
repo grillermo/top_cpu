@@ -27,16 +27,18 @@ type model struct {
 	excludedPath string
 	filter       string
 	cursor       int
-	offset       int // first visible row index
-	height       int // terminal height in rows
+	offset       int    // first visible row index
+	height       int    // terminal height in rows
+	selected     string // process name locked for exclusion (empty = none)
 	displayList  []procEntry
 }
 
 var (
-	cursorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	headerStyle  = lipgloss.NewStyle().Bold(true)
-	dividerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	cursorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
+	headerStyle   = lipgloss.NewStyle().Bold(true)
+	dividerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
 func newModel(excluded map[string]struct{}, excludedPath string) model {
@@ -105,28 +107,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.offset = m.syncedOffset()
 			}
 
-		case tea.KeyF1:
+		case tea.KeyEnter:
 			if len(m.displayList) > 0 {
-				name := m.displayList[m.cursor].name
+				m.selected = m.displayList[m.cursor].name
+			}
+
+		case tea.KeyF1:
+			if m.selected != "" {
 				next := make(map[string]struct{}, len(m.excluded)+1)
 				for k, v := range m.excluded {
 					next[k] = v
 				}
-				next[name] = struct{}{}
+				next[m.selected] = struct{}{}
 				m.excluded = next
-				if err := appendExclusion(m.excludedPath, name); err != nil {
+				if err := appendExclusion(m.excludedPath, m.selected); err != nil {
 					fmt.Fprintf(os.Stderr, "top_cpu: failed to persist exclusion: %v\n", err)
 				}
+				m.selected = ""
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 				m.offset = m.syncedOffset()
 			}
 
 		case tea.KeyEsc:
-			m.filter = ""
-			m.displayList = m.buildDisplayList()
-			m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
-			m.offset = m.syncedOffset()
+			if m.selected != "" {
+				m.selected = ""
+			} else {
+				m.filter = ""
+				m.displayList = m.buildDisplayList()
+				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+				m.offset = m.syncedOffset()
+			}
 
 		case tea.KeyBackspace:
 			if len(m.filter) > 0 {
@@ -153,10 +164,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var sb strings.Builder
 
-	sb.WriteString(headerStyle.Render(fmt.Sprintf(
-		"top_cpu  [filter: %s]   excluded: %d",
-		m.filter+"_", len(m.excluded),
-	)))
+	header := fmt.Sprintf("top_cpu  [filter: %s]   excluded: %d", m.filter+"_", len(m.excluded))
+	if m.selected != "" {
+		header += fmt.Sprintf("   selected: %s", selectedStyle.Render(m.selected))
+	}
+	sb.WriteString(headerStyle.Render(header))
 	sb.WriteString("\n")
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
@@ -169,7 +181,11 @@ func (m model) View() string {
 		p := m.displayList[i]
 		prefix := "  "
 		line := fmt.Sprintf("%3d  %6.1f%%  %s", i+1, p.cpu, p.name)
-		if i == m.cursor {
+		switch {
+		case p.name == m.selected:
+			prefix = "★ "
+			line = selectedStyle.Render(line)
+		case i == m.cursor:
 			prefix = "▶ "
 			line = cursorStyle.Render(line)
 		}
@@ -178,7 +194,11 @@ func (m model) View() string {
 
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("↑↓ navigate  type to filter  F1 exclude  q quit"))
+	help := "↑↓ navigate  type to filter  Enter select  q quit"
+	if m.selected != "" {
+		help = "↑↓ navigate  F1 exclude selected  Esc deselect  q quit"
+	}
+	sb.WriteString(helpStyle.Render(help))
 
 	return sb.String()
 }
