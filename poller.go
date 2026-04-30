@@ -28,21 +28,23 @@ func parsePS(output string) []rawEntry {
 	var entries []rawEntry
 	for _, line := range lines[1:] {
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) < 3 {
 			continue
 		}
 		cpu, err := strconv.ParseFloat(fields[0], 64)
 		if err != nil {
 			continue
 		}
-		name := strings.Join(fields[1:], " ")
+		pid := fields[1]
+		comm := strings.Join(fields[2:], " ")
+		name := fmt.Sprintf("%s (%s)", comm, pid)
 		entries = append(entries, rawEntry{cpu: cpu, name: name})
 	}
 	return entries
 }
 
 func fetchProcesses() tickMsg {
-	out, err := exec.Command("ps", "-eo", "%cpu,comm").Output()
+	out, err := exec.Command("ps", "-eo", "%cpu,pid,comm").Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "top_cpu: ps error: %v\n", err)
 		return tickMsg{}
