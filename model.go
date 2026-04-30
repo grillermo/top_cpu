@@ -27,6 +27,8 @@ type model struct {
 	excludedPath string
 	filter       string
 	cursor       int
+	offset       int // first visible row index
+	height       int // terminal height in rows
 	displayList  []procEntry
 }
 
@@ -42,7 +44,28 @@ func newModel(excluded map[string]struct{}, excludedPath string) model {
 		cumulative:   make(map[string]float64),
 		excluded:     excluded,
 		excludedPath: excludedPath,
+		height:       24,
 	}
+}
+
+func (m model) viewHeight() int {
+	const fixedRows = 4 // header + top divider + bottom divider + help
+	h := m.height - fixedRows
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
+func (m model) syncedOffset() int {
+	vh := m.viewHeight()
+	if m.cursor < m.offset {
+		return m.cursor
+	}
+	if m.cursor >= m.offset+vh {
+		return m.cursor - vh + 1
+	}
+	return m.offset
 }
 
 func (m model) Init() tea.Cmd {
@@ -51,12 +74,18 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		m.offset = m.syncedOffset()
+		return m, nil
+
 	case tickMsg:
 		for _, e := range msg.entries {
 			m.cumulative[e.name] += e.cpu
 		}
 		m.displayList = m.buildDisplayList()
 		m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+		m.offset = m.syncedOffset()
 		return m, pollCmd(pollInterval)
 
 	case tea.KeyMsg:
@@ -67,11 +96,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyUp:
 			if m.cursor > 0 {
 				m.cursor--
+				m.offset = m.syncedOffset()
 			}
 
 		case tea.KeyDown:
 			if m.cursor < len(m.displayList)-1 {
 				m.cursor++
+				m.offset = m.syncedOffset()
 			}
 
 		case tea.KeyDelete:
@@ -88,12 +119,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+				m.offset = m.syncedOffset()
 			}
 
 		case tea.KeyEsc:
 			m.filter = ""
 			m.displayList = m.buildDisplayList()
 			m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+			m.offset = m.syncedOffset()
 
 		case tea.KeyBackspace:
 			if len(m.filter) > 0 {
@@ -101,6 +134,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filter = string(r[:len(r)-1])
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+				m.offset = m.syncedOffset()
 			}
 
 		case tea.KeyRunes:
@@ -110,6 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filter += msg.String()
 			m.displayList = m.buildDisplayList()
 			m.cursor = 0
+			m.offset = 0
 		}
 	}
 	return m, nil
@@ -126,7 +161,12 @@ func (m model) View() string {
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
 
-	for i, p := range m.displayList {
+	end := m.offset + m.viewHeight()
+	if end > len(m.displayList) {
+		end = len(m.displayList)
+	}
+	for i := m.offset; i < end; i++ {
+		p := m.displayList[i]
 		prefix := "  "
 		line := fmt.Sprintf("%3d  %6.1f%%  %s", i+1, p.cpu, p.name)
 		if i == m.cursor {
