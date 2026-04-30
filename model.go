@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -76,8 +77,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyDelete:
 			if len(m.displayList) > 0 {
 				name := m.displayList[m.cursor].name
-				m.excluded[name] = struct{}{}
-				_ = appendExclusion(m.excludedPath, name)
+				next := make(map[string]struct{}, len(m.excluded)+1)
+				for k, v := range m.excluded {
+					next[k] = v
+				}
+				next[name] = struct{}{}
+				m.excluded = next
+				if err := appendExclusion(m.excludedPath, name); err != nil {
+					fmt.Fprintf(os.Stderr, "top_cpu: failed to persist exclusion: %v\n", err)
+				}
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 			}
@@ -89,7 +97,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyBackspace:
 			if len(m.filter) > 0 {
-				m.filter = m.filter[:len(m.filter)-1]
+				r := []rune(m.filter)
+				m.filter = string(r[:len(r)-1])
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 			}
