@@ -5,10 +5,10 @@ import (
 )
 
 func TestParsePSNormalOutput(t *testing.T) {
-	input := `%CPU   PID COMM
+	input := `%CPU   PID ARGS
   1.5   101 firefox
- 23.4   202 node
-  0.0   303 ps`
+ 23.4   202 node server.js
+  0.0   303 /usr/bin/ps -eo %cpu,pid,args`
 
 	entries := parsePS(input)
 
@@ -26,8 +26,34 @@ func TestParsePSNormalOutput(t *testing.T) {
 	}
 }
 
+func TestParsePSUsesArgv0Basename(t *testing.T) {
+	input := `%CPU   PID ARGS
+ 10.0   42 my_worker script.py --flag`
+
+	entries := parsePS(input)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].name != "my_worker (42)" {
+		t.Errorf("expected \"my_worker (42)\", got %q", entries[0].name)
+	}
+}
+
+func TestParsePSStripsPathFromArgv0(t *testing.T) {
+	input := `%CPU   PID ARGS
+ 15.0   99 /usr/local/bin/python3 script.py`
+
+	entries := parsePS(input)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].name != "python3 (99)" {
+		t.Errorf("expected \"python3 (99)\", got %q", entries[0].name)
+	}
+}
+
 func TestParsePSHeaderOnly(t *testing.T) {
-	entries := parsePS("%CPU   PID COMM\n")
+	entries := parsePS("%CPU   PID ARGS\n")
 	if len(entries) != 0 {
 		t.Errorf("expected 0 entries for header-only output, got %d", len(entries))
 	}
@@ -41,9 +67,9 @@ func TestParsePSEmpty(t *testing.T) {
 }
 
 func TestParsePSSkipsMalformedLines(t *testing.T) {
-	input := `%CPU   PID COMM
+	input := `%CPU   PID ARGS
   notanumber 101 firefox
- 10.0   202 node`
+ 10.0   202 node server.js`
 
 	entries := parsePS(input)
 	if len(entries) != 1 {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -36,15 +37,14 @@ func parsePS(output string) []rawEntry {
 			continue
 		}
 		pid := fields[1]
-		comm := strings.Join(fields[2:], " ")
-		name := fmt.Sprintf("%s (%s)", comm, pid)
+		name := fmt.Sprintf("%s (%s)", filepath.Base(fields[2]), pid)
 		entries = append(entries, rawEntry{cpu: cpu, name: name})
 	}
 	return entries
 }
 
 func fetchProcesses() tickMsg {
-	out, err := exec.Command("ps", "-eo", "%cpu,pid,comm").Output()
+	out, err := exec.Command("ps", "-eo", "%cpu,pid,args").Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "top_cpu: ps error: %v\n", err)
 		return tickMsg{}
