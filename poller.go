@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -42,6 +44,7 @@ func parsePS(output string) []rawEntry {
 func fetchProcesses() tickMsg {
 	out, err := exec.Command("ps", "-eo", "%cpu,comm").Output()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "top_cpu: ps error: %v\n", err)
 		return tickMsg{}
 	}
 	return tickMsg{entries: parsePS(string(out))}
