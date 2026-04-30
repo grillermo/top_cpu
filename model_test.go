@@ -1,0 +1,100 @@
+package main
+
+import (
+	"fmt"
+	"testing"
+)
+
+func TestBuildDisplayListFiltersExcluded(t *testing.T) {
+	m := newModel(map[string]struct{}{"firefox": {}}, "")
+	m.cumulative = map[string]float64{
+		"firefox": 50.0,
+		"node":    30.0,
+		"bash":    10.0,
+	}
+	list := m.buildDisplayList()
+
+	for _, p := range list {
+		if p.name == "firefox" {
+			t.Error("firefox should be excluded from display list")
+		}
+	}
+	if len(list) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(list))
+	}
+}
+
+func TestBuildDisplayListSortedDescending(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	m.cumulative = map[string]float64{
+		"a": 10.0,
+		"b": 50.0,
+		"c": 30.0,
+	}
+	list := m.buildDisplayList()
+
+	if len(list) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(list))
+	}
+	if list[0].name != "b" {
+		t.Errorf("expected b first (highest cpu), got %q", list[0].name)
+	}
+	if list[1].name != "c" {
+		t.Errorf("expected c second, got %q", list[1].name)
+	}
+	if list[2].name != "a" {
+		t.Errorf("expected a third, got %q", list[2].name)
+	}
+}
+
+func TestBuildDisplayListFilterCaseInsensitive(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	m.cumulative = map[string]float64{
+		"Firefox": 50.0,
+		"node":    30.0,
+	}
+	m.filter = "fire"
+	list := m.buildDisplayList()
+
+	if len(list) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(list))
+	}
+	if list[0].name != "Firefox" {
+		t.Errorf("expected Firefox, got %q", list[0].name)
+	}
+}
+
+func TestBuildDisplayListCapsAt60(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	m.cumulative = make(map[string]float64)
+	for i := 0; i < 100; i++ {
+		m.cumulative[fmt.Sprintf("proc%d", i)] = float64(i)
+	}
+	list := m.buildDisplayList()
+	if len(list) != 60 {
+		t.Errorf("expected 60 entries (display limit), got %d", len(list))
+	}
+}
+
+func TestBuildDisplayListEmptyCumulative(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	list := m.buildDisplayList()
+	if len(list) != 0 {
+		t.Errorf("expected 0 entries for empty cumulative, got %d", len(list))
+	}
+}
+
+func TestClamp(t *testing.T) {
+	if clamp(5, 0, 10) != 5 {
+		t.Error("clamp(5,0,10) should be 5")
+	}
+	if clamp(-1, 0, 10) != 0 {
+		t.Error("clamp(-1,0,10) should be 0")
+	}
+	if clamp(15, 0, 10) != 10 {
+		t.Error("clamp(15,0,10) should be 10")
+	}
+	if clamp(5, 0, -1) != 0 {
+		t.Error("clamp(5,0,-1) should be 0 (empty list case)")
+	}
+}
