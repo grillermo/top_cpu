@@ -26,6 +26,7 @@ type model struct {
 	excluded     map[string]struct{}
 	excludedPath string
 	filter       string
+	filtering    bool   // true when F4 filter mode is active
 	cursor       int
 	offset       int    // first visible row index
 	height       int    // terminal height in rows
@@ -129,10 +130,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.offset = m.syncedOffset()
 			}
 
+		case tea.KeyF4:
+			m.filtering = true
+
 		case tea.KeyEsc:
 			if m.selected != "" {
 				m.selected = ""
-			} else {
+			} else if m.filtering {
+				m.filtering = false
 				m.filter = ""
 				m.displayList = m.buildDisplayList()
 				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
@@ -140,7 +145,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyBackspace:
-			if len(m.filter) > 0 {
+			if m.filtering && len(m.filter) > 0 {
 				r := []rune(m.filter)
 				m.filter = string(r[:len(r)-1])
 				m.displayList = m.buildDisplayList()
@@ -149,13 +154,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case tea.KeyRunes:
-			if msg.String() == "q" && m.filter == "" {
+			if msg.String() == "q" && !m.filtering {
 				return m, tea.Quit
 			}
-			m.filter += msg.String()
-			m.displayList = m.buildDisplayList()
-			m.cursor = 0
-			m.offset = 0
+			if m.filtering {
+				m.filter += msg.String()
+				m.displayList = m.buildDisplayList()
+				m.cursor = 0
+				m.offset = 0
+			}
 		}
 	}
 	return m, nil
@@ -164,7 +171,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var sb strings.Builder
 
-	header := fmt.Sprintf("top_cpu  [filter: %s]   excluded: %d", m.filter+"_", len(m.excluded))
+	header := fmt.Sprintf("top_cpu   excluded: %d", len(m.excluded))
+	if m.filtering {
+		header += fmt.Sprintf("   [filter: %s_]", m.filter)
+	}
 	if m.selected != "" {
 		header += fmt.Sprintf("   selected: %s", selectedStyle.Render(m.selected))
 	}
@@ -194,9 +204,14 @@ func (m model) View() string {
 
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
-	help := "↑↓ navigate  type to filter  Enter select  q quit"
-	if m.selected != "" {
+	var help string
+	switch {
+	case m.selected != "":
 		help = "↑↓ navigate  F1 exclude selected  Esc deselect  q quit"
+	case m.filtering:
+		help = "type to filter  Backspace  Esc exit filter"
+	default:
+		help = "↑↓ navigate  Enter select  F4 filter  q quit"
 	}
 	sb.WriteString(helpStyle.Render(help))
 
