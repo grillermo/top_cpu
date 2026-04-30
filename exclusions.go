@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strings"
 )
@@ -9,7 +10,7 @@ import (
 func loadExclusions(path string) (map[string]struct{}, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return make(map[string]struct{}), nil
 		}
 		return nil, err

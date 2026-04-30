@@ -50,7 +50,9 @@ func TestLoadAndAppendExclusions(t *testing.T) {
 
 func TestLoadExclusionsDeduplicate(t *testing.T) {
 	path := t.TempDir() + "/excluded.txt"
-	os.WriteFile(path, []byte("firefox\nnode\nfirefox\n"), 0644)
+	if err := os.WriteFile(path, []byte("firefox\nnode\nfirefox\n"), 0644); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
 
 	excluded, err := loadExclusions(path)
 	if err != nil {
@@ -63,7 +65,9 @@ func TestLoadExclusionsDeduplicate(t *testing.T) {
 
 func TestLoadExclusionsIgnoresBlankLines(t *testing.T) {
 	path := t.TempDir() + "/excluded.txt"
-	os.WriteFile(path, []byte("firefox\n\nnode\n\n"), 0644)
+	if err := os.WriteFile(path, []byte("firefox\n\nnode\n\n"), 0644); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
 
 	excluded, err := loadExclusions(path)
 	if err != nil {
