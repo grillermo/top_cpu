@@ -178,7 +178,7 @@ func (m model) View() string {
 
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("↑↓ navigate  type to filter  Del exclude  q quit"))
+	sb.WriteString(helpStyle.Render("↑↓ navigate  type to filter  Supr exclude  q quit"))
 
 	return sb.String()
 }
