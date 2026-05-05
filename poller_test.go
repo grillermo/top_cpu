@@ -79,3 +79,29 @@ func TestParsePSSkipsMalformedLines(t *testing.T) {
 		t.Errorf("expected \"node (202)\", got %q", entries[0].name)
 	}
 }
+
+func TestParsePSUsesSetProcTitleWhenPresent(t *testing.T) {
+	input := `%CPU   PID ARGS
+  0.0  555 puma 7.2.0 (tcp://0.0.0.0:3001) [auto-email-classifier]`
+
+	entries := parsePS(input)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].name != "[auto-email-classifier] (555)" {
+		t.Errorf("expected \"[auto-email-classifier] (555)\", got %q", entries[0].name)
+	}
+}
+
+func TestParsePSUsesSetProcTitleWithSpaces(t *testing.T) {
+	input := `%CPU   PID ARGS
+  0.0  777 ruby worker.rb [stress test]`
+
+	entries := parsePS(input)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].name != "[stress test] (777)" {
+		t.Errorf("expected \"[stress test] (777)\", got %q", entries[0].name)
+	}
+}

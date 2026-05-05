@@ -37,10 +37,32 @@ func parsePS(output string) []rawEntry {
 			continue
 		}
 		pid := fields[1]
-		name := fmt.Sprintf("%s (%s)", filepath.Base(fields[2]), pid)
+		argsStart := strings.Index(line, fields[2])
+		if argsStart == -1 {
+			continue
+		}
+		args := strings.TrimSpace(line[argsStart:])
+		name := processDisplayName(args, pid)
 		entries = append(entries, rawEntry{cpu: cpu, name: name})
 	}
 	return entries
+}
+
+func processDisplayName(args, pid string) string {
+	if strings.HasSuffix(args, "]") {
+		if i := strings.LastIndex(args, "["); i != -1 {
+			title := strings.TrimSpace(args[i:])
+			if len(title) >= 3 {
+			return fmt.Sprintf("%s (%s)", title, pid)
+			}
+		}
+	}
+
+	argv := strings.Fields(args)
+	if len(argv) == 0 {
+		return fmt.Sprintf("unknown (%s)", pid)
+	}
+	return fmt.Sprintf("%s (%s)", filepath.Base(argv[0]), pid)
 }
 
 func fetchProcesses() tickMsg {
