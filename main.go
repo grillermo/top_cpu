@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -10,6 +11,17 @@ import (
 const excludedFilePath = "./top_cpu_excluded.txt"
 
 func main() {
+	daemon := flag.Bool("daemon", false, "run as background recorder (writes CPU samples to SQLite)")
+	flag.Parse()
+
+	if *daemon {
+		if err := runDaemon(); err != nil {
+			fmt.Fprintf(os.Stderr, "top_cpu daemon: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	excluded, err := loadExclusions(excludedFilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not load exclusions: %v\n", err)

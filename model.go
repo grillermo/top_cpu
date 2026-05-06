@@ -21,6 +21,11 @@ type procEntry struct {
 	cpu  float64
 }
 
+const (
+	tabList     = 0
+	tabTimeline = 1
+)
+
 type model struct {
 	cumulative   map[string]float64
 	excluded     map[string]struct{}
@@ -29,9 +34,12 @@ type model struct {
 	filtering    bool   // true when F4 filter mode is active
 	cursor       int
 	offset       int    // first visible row index
+	width        int    // terminal width in columns
 	height       int    // terminal height in rows
 	selected     string // process name locked for exclusion (empty = none)
 	displayList  []procEntry
+	activeTab    int
+	timeline     timelineState
 }
 
 var (
@@ -47,7 +55,9 @@ func newModel(excluded map[string]struct{}, excludedPath string) model {
 		cumulative:   make(map[string]float64),
 		excluded:     excluded,
 		excludedPath: excludedPath,
+		width:        80,
 		height:       24,
+		timeline:     newTimelineState(),
 	}
 }
 
@@ -78,6 +88,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
 		m.height = msg.Height
 		m.offset = m.syncedOffset()
 		return m, nil
@@ -91,78 +102,161 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.offset = m.syncedOffset()
 		return m, pollCmd(pollInterval)
 
+	case timelineDataMsg:
+		if msg.rng == m.timeline.rng {
+			m.timeline.loaded = true
+			m.timeline.loading = false
+			m.timeline.err = msg.err
+			m.timeline.rankedNames = msg.rankedNames
+			m.timeline.series = msg.series
+			m.timeline.lastQuery = time.Now()
+		}
+		return m, nil
+
+	case timelineRefreshTickMsg:
+		if m.activeTab == tabTimeline {
+			m.timeline.loading = true
+			return m, tea.Batch(
+				loadTimelineCmd(m.timeline.rng, m.timeline.dbPath, m.width),
+				timelineRefreshTick(),
+			)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		// Filter mode consumes most keys.
+		if m.filtering {
+			return m.updateFiltering(msg)
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 
-		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-				m.offset = m.syncedOffset()
+		case tea.KeyLeft:
+			if m.activeTab > 0 {
+				m.activeTab--
 			}
+			return m, nil
 
-		case tea.KeyDown:
-			if m.cursor < len(m.displayList)-1 {
-				m.cursor++
-				m.offset = m.syncedOffset()
-			}
-
-		case tea.KeyEnter:
-			if len(m.displayList) > 0 {
-				m.selected = m.displayList[m.cursor].name
-			}
-
-		case tea.KeyF1:
-			if m.selected != "" {
-				next := make(map[string]struct{}, len(m.excluded)+1)
-				for k, v := range m.excluded {
-					next[k] = v
+		case tea.KeyRight:
+			if m.activeTab < tabTimeline {
+				m.activeTab++
+				if m.activeTab == tabTimeline && !m.timeline.loaded {
+					m.timeline.loading = true
+					return m, tea.Batch(
+						loadTimelineCmd(m.timeline.rng, m.timeline.dbPath, m.width),
+						timelineRefreshTick(),
+					)
 				}
-				next[m.selected] = struct{}{}
-				m.excluded = next
-				if err := appendExclusion(m.excludedPath, m.selected); err != nil {
-					fmt.Fprintf(os.Stderr, "top_cpu: failed to persist exclusion: %v\n", err)
-				}
-				m.selected = ""
-				m.displayList = m.buildDisplayList()
-				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
-				m.offset = m.syncedOffset()
 			}
+			return m, nil
+		}
 
-		case tea.KeyF4:
-			m.filtering = true
+		if m.activeTab == tabTimeline {
+			return m.updateTimeline(msg)
+		}
+		return m.updateList(msg)
+	}
+	return m, nil
+}
 
-		case tea.KeyEsc:
-			if m.selected != "" {
-				m.selected = ""
-			} else if m.filtering {
-				m.filtering = false
-				m.filter = ""
-				m.displayList = m.buildDisplayList()
-				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
-				m.offset = m.syncedOffset()
-			}
+func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.offset = m.syncedOffset()
+		}
 
-		case tea.KeyBackspace:
-			if m.filtering && len(m.filter) > 0 {
-				r := []rune(m.filter)
-				m.filter = string(r[:len(r)-1])
-				m.displayList = m.buildDisplayList()
-				m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
-				m.offset = m.syncedOffset()
-			}
+	case tea.KeyDown:
+		if m.cursor < len(m.displayList)-1 {
+			m.cursor++
+			m.offset = m.syncedOffset()
+		}
 
-		case tea.KeyRunes:
-			if msg.String() == "q" && !m.filtering {
-				return m, tea.Quit
+	case tea.KeyEnter:
+		if len(m.displayList) > 0 {
+			m.selected = m.displayList[m.cursor].name
+		}
+
+	case tea.KeyF1:
+		if m.selected != "" {
+			next := make(map[string]struct{}, len(m.excluded)+1)
+			for k, v := range m.excluded {
+				next[k] = v
 			}
-			if m.filtering {
-				m.filter += msg.String()
-				m.displayList = m.buildDisplayList()
-				m.cursor = 0
-				m.offset = 0
+			next[m.selected] = struct{}{}
+			m.excluded = next
+			if err := appendExclusion(m.excludedPath, m.selected); err != nil {
+				fmt.Fprintf(os.Stderr, "top_cpu: failed to persist exclusion: %v\n", err)
 			}
+			m.selected = ""
+			m.displayList = m.buildDisplayList()
+			m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+			m.offset = m.syncedOffset()
+		}
+
+	case tea.KeyF4:
+		m.filtering = true
+
+	case tea.KeyEsc:
+		if m.selected != "" {
+			m.selected = ""
+		}
+
+	case tea.KeyRunes:
+		if msg.String() == "q" {
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m model) updateFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+
+	case tea.KeyEsc:
+		m.filtering = false
+		m.filter = ""
+		m.displayList = m.buildDisplayList()
+		m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+		m.offset = m.syncedOffset()
+
+	case tea.KeyBackspace:
+		if len(m.filter) > 0 {
+			r := []rune(m.filter)
+			m.filter = string(r[:len(r)-1])
+			m.displayList = m.buildDisplayList()
+			m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+			m.offset = m.syncedOffset()
+		}
+
+	case tea.KeyRunes:
+		m.filter += msg.String()
+		m.displayList = m.buildDisplayList()
+		m.cursor = 0
+		m.offset = 0
+	}
+	return m, nil
+}
+
+func (m model) updateTimeline(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyRunes:
+		switch msg.String() {
+		case "q":
+			return m, tea.Quit
+		case "t":
+			m.timeline.rng = m.timeline.rng.cycle()
+			m.timeline.loading = true
+			m.timeline.loaded = false
+			return m, loadTimelineCmd(m.timeline.rng, m.timeline.dbPath, m.width)
+		case "r":
+			m.timeline.loading = true
+			return m, loadTimelineCmd(m.timeline.rng, m.timeline.dbPath, m.width)
 		}
 	}
 	return m, nil
@@ -170,18 +264,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var sb strings.Builder
-
-	header := fmt.Sprintf("top_cpu   excluded: %d", len(m.excluded))
-	if m.filtering {
-		header += fmt.Sprintf("   [filter: %s_]", m.filter)
-	}
-	if m.selected != "" {
-		header += fmt.Sprintf("   selected: %s", selectedStyle.Render(m.selected))
-	}
-	sb.WriteString(headerStyle.Render(header))
+	sb.WriteString(m.renderTabBar())
 	sb.WriteString("\n")
 	sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
 	sb.WriteString("\n")
+
+	if m.activeTab == tabTimeline {
+		sb.WriteString(renderTimeline(m.timeline, m.width, m.height))
+		sb.WriteString("\n")
+		sb.WriteString(dividerStyle.Render(strings.Repeat("─", 52)))
+		sb.WriteString("\n")
+		sb.WriteString(helpStyle.Render("←→ switch tabs  t cycle range  r refresh  q quit"))
+		return sb.String()
+	}
 
 	end := m.offset + m.viewHeight()
 	if end > len(m.displayList) {
@@ -207,15 +302,43 @@ func (m model) View() string {
 	var help string
 	switch {
 	case m.selected != "":
-		help = "↑↓ navigate  F1 exclude selected  Esc deselect  q quit"
+		help = "↑↓ navigate  F1 exclude selected  Esc deselect  ←→ tabs  q quit"
 	case m.filtering:
 		help = "type to filter  Backspace  Esc exit filter"
 	default:
-		help = "↑↓ navigate  Enter select  F4 filter  q quit"
+		help = "↑↓ navigate  Enter select  F4 filter  ←→ tabs  q quit"
 	}
 	sb.WriteString(helpStyle.Render(help))
 
 	return sb.String()
+}
+
+func (m model) renderTabBar() string {
+	listTab := "  List  "
+	timelineTab := "  Timeline  "
+	if m.activeTab == tabList {
+		listTab = "▶ List  "
+	} else {
+		timelineTab = "▶ Timeline  "
+	}
+	bar := fmt.Sprintf("[%s] [%s]", listTab, timelineTab)
+
+	switch m.activeTab {
+	case tabList:
+		bar += fmt.Sprintf("   excluded: %d", len(m.excluded))
+		if m.filtering {
+			bar += fmt.Sprintf("   [filter: %s_]", m.filter)
+		}
+		if m.selected != "" {
+			bar += fmt.Sprintf("   selected: %s", selectedStyle.Render(m.selected))
+		}
+	case tabTimeline:
+		bar += fmt.Sprintf("   Range: %s", m.timeline.rng.label())
+		if m.timeline.loading {
+			bar += "   (loading…)"
+		}
+	}
+	return headerStyle.Render(bar)
 }
 
 func (m model) buildDisplayList() []procEntry {
