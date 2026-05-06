@@ -17,8 +17,9 @@ const (
 )
 
 type procEntry struct {
-	name string
-	cpu  float64
+	name  string
+	cpu   float64
+	ports []int
 }
 
 const (
@@ -28,6 +29,7 @@ const (
 
 type model struct {
 	cumulative   map[string]float64
+	latestPorts  map[string][]int
 	excluded     map[string]struct{}
 	excludedPath string
 	filter       string
@@ -53,6 +55,7 @@ var (
 func newModel(excluded map[string]struct{}, excludedPath string) model {
 	return model{
 		cumulative:   make(map[string]float64),
+		latestPorts:  make(map[string][]int),
 		excluded:     excluded,
 		excludedPath: excludedPath,
 		width:        80,
@@ -62,7 +65,7 @@ func newModel(excluded map[string]struct{}, excludedPath string) model {
 }
 
 func (m model) viewHeight() int {
-	const fixedRows = 4 // header + top divider + bottom divider + help
+	const fixedRows = 5 // tab bar + top divider + column header + bottom divider + help
 	h := m.height - fixedRows
 	if h < 1 {
 		return 1
@@ -94,9 +97,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		nextPorts := make(map[string][]int, len(msg.entries))
 		for _, e := range msg.entries {
 			m.cumulative[e.name] += e.cpu
+			if len(e.ports) > 0 {
+				nextPorts[e.name] = e.ports
+			}
 		}
+		m.latestPorts = nextPorts
 		m.displayList = m.buildDisplayList()
 		m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 		m.offset = m.syncedOffset()
@@ -278,6 +286,10 @@ func (m model) View() string {
 		return sb.String()
 	}
 
+	header := fmt.Sprintf("  %-8s  %-9s  %-20s  %s", "Position", "CPU Usage", "Port", "Process Name")
+	sb.WriteString(headerStyle.Render(header))
+	sb.WriteString("\n")
+
 	end := m.offset + m.viewHeight()
 	if end > len(m.displayList) {
 		end = len(m.displayList)
@@ -285,7 +297,7 @@ func (m model) View() string {
 	for i := m.offset; i < end; i++ {
 		p := m.displayList[i]
 		prefix := "  "
-		line := fmt.Sprintf("%3d  %6.1f%%  %s", i+1, p.cpu, p.name)
+		line := fmt.Sprintf("%-8d  %8.1f%%  %-20s  %s", i+1, p.cpu, formatPorts(p.ports), p.name)
 		switch {
 		case p.name == m.selected:
 			prefix = "★ "
@@ -343,8 +355,9 @@ func (m model) renderTabBar() string {
 
 func (m model) buildDisplayList() []procEntry {
 	type kv struct {
-		name string
-		cpu  float64
+		name  string
+		cpu   float64
+		ports []int
 	}
 	filterLower := strings.ToLower(m.filter)
 	all := make([]kv, 0, len(m.cumulative))
@@ -352,10 +365,11 @@ func (m model) buildDisplayList() []procEntry {
 		if _, ok := m.excluded[name]; ok {
 			continue
 		}
-		if filterLower != "" && !strings.Contains(strings.ToLower(name), filterLower) {
+		ports := m.latestPorts[name]
+		if filterLower != "" && !matchesFilter(name, ports, filterLower) {
 			continue
 		}
-		all = append(all, kv{name, cpu})
+		all = append(all, kv{name, cpu, ports})
 	}
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].cpu > all[j].cpu
@@ -365,9 +379,21 @@ func (m model) buildDisplayList() []procEntry {
 	}
 	result := make([]procEntry, len(all))
 	for i, kv := range all {
-		result[i] = procEntry{name: kv.name, cpu: kv.cpu}
+		result[i] = procEntry{name: kv.name, cpu: kv.cpu, ports: kv.ports}
 	}
 	return result
+}
+
+func matchesFilter(name string, ports []int, filterLower string) bool {
+	if strings.Contains(strings.ToLower(name), filterLower) {
+		return true
+	}
+	for _, p := range ports {
+		if strings.Contains(fmt.Sprintf("%d", p), filterLower) {
+			return true
+		}
+	}
+	return false
 }
 
 func clamp(v, lo, hi int) int {

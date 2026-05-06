@@ -26,12 +26,13 @@ File responsibilities:
 | `main.go` | Entry: parse `--daemon` flag, branch to daemon or TUI |
 | `model.go` | Bubble Tea `Init`/`Update`/`View`, tab bar, list-tab handlers |
 | `poller.go` | `parsePS` (pure fn), `fetchProcesses`, `pollCmd`, types |
+| `ports.go` | `parseLsof` (pure fn), `fetchListeningPorts`, `formatPorts` |
 | `exclusions.go` | `loadExclusions`, `appendExclusion` — file I/O only |
 | `daemon.go` | `runDaemon` loop: poll → insert → purge; signal-aware |
 | `store.go` | SQLite (modernc.org/sqlite): schema, insert, `QueryTopN`, purge |
 | `timeline.go` | Timeline tab state, asciigraph rendering, log-transform, legend |
 
-**Live data flow (List tab):** `pollCmd` → `tea.Tick` → `fetchProcesses()` → `tickMsg` → `Update` accumulates into `model.cumulative` map → `buildDisplayList` filters/sorts/caps.
+**Live data flow (List tab):** `pollCmd` → `tea.Tick` → `fetchProcesses()` (runs `ps` and `lsof -iTCP -sTCP:LISTEN` concurrently, joins on PID) → `tickMsg` → `Update` accumulates CPU into `model.cumulative` and rebuilds `model.latestPorts` (ports always reflect newest tick) → `buildDisplayList` filters (name OR port substring) / sorts / caps. Rendered as `idx  cpu%  ports  name (pid)`.
 
 **Historical data flow (Timeline tab):** Daemon writes `cpu_samples(process_name, cpu_pct, recorded_at)` to `~/.local/share/top_cpu/top_cpu.db`. TUI calls `store.QueryTopN(start, end, n=10, buckets=chartWidth)` which returns top 10 processes by `MAX(cpu_pct)` in window, each pre-bucketed by SQLite `GROUP BY (recorded_at - start) / bucketWidth`. Values log-transformed (`log10(cpu+1)`) before passing to `asciigraph.PlotMany`.
 

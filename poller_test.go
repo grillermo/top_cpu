@@ -15,14 +15,14 @@ func TestParsePSNormalOutput(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries, got %d", len(entries))
 	}
-	if entries[0].cpu != 1.5 || entries[0].name != "firefox (101)" {
-		t.Errorf("entry 0: got cpu=%v name=%q, want cpu=1.5 name=\"firefox (101)\"", entries[0].cpu, entries[0].name)
+	if entries[0].cpu != 1.5 || entries[0].name != "firefox (101)" || entries[0].pid != "101" {
+		t.Errorf("entry 0: got cpu=%v name=%q pid=%q, want cpu=1.5 name=\"firefox (101)\" pid=\"101\"", entries[0].cpu, entries[0].name, entries[0].pid)
 	}
-	if entries[1].cpu != 23.4 || entries[1].name != "node (202)" {
-		t.Errorf("entry 1: got cpu=%v name=%q, want cpu=23.4 name=\"node (202)\"", entries[1].cpu, entries[1].name)
+	if entries[1].cpu != 23.4 || entries[1].name != "node (202)" || entries[1].pid != "202" {
+		t.Errorf("entry 1: got cpu=%v name=%q pid=%q, want cpu=23.4 name=\"node (202)\" pid=\"202\"", entries[1].cpu, entries[1].name, entries[1].pid)
 	}
-	if entries[2].cpu != 0.0 || entries[2].name != "ps (303)" {
-		t.Errorf("entry 2: got cpu=%v name=%q, want cpu=0.0 name=\"ps (303)\"", entries[2].cpu, entries[2].name)
+	if entries[2].cpu != 0.0 || entries[2].name != "ps (303)" || entries[2].pid != "303" {
+		t.Errorf("entry 2: got cpu=%v name=%q pid=%q, want cpu=0.0 name=\"ps (303)\" pid=\"303\"", entries[2].cpu, entries[2].name, entries[2].pid)
 	}
 }
 

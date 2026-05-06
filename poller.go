@@ -7,14 +7,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type rawEntry struct {
-	cpu  float64
-	name string
+	cpu   float64
+	name  string
+	pid   string
+	ports []int
 }
 
 type tickMsg struct {
@@ -43,7 +46,7 @@ func parsePS(output string) []rawEntry {
 		}
 		args := strings.TrimSpace(line[argsStart:])
 		name := processDisplayName(args, pid)
-		entries = append(entries, rawEntry{cpu: cpu, name: name})
+		entries = append(entries, rawEntry{cpu: cpu, name: name, pid: pid})
 	}
 	return entries
 }
@@ -66,12 +69,33 @@ func processDisplayName(args, pid string) string {
 }
 
 func fetchProcesses() tickMsg {
-	out, err := exec.Command("ps", "-eo", "%cpu,pid,args").Output()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "top_cpu: ps error: %v\n", err)
+	var (
+		wg       sync.WaitGroup
+		psOut    string
+		psErr    error
+		portsMap map[string][]int
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		out, err := exec.Command("ps", "-eo", "%cpu,pid,args").Output()
+		psOut, psErr = string(out), err
+	}()
+	go func() {
+		defer wg.Done()
+		portsMap = fetchListeningPorts()
+	}()
+	wg.Wait()
+
+	if psErr != nil {
+		fmt.Fprintf(os.Stderr, "top_cpu: ps error: %v\n", psErr)
 		return tickMsg{}
 	}
-	return tickMsg{entries: parsePS(string(out))}
+	entries := parsePS(psOut)
+	for i := range entries {
+		entries[i].ports = portsMap[entries[i].pid]
+	}
+	return tickMsg{entries: entries}
 }
 
 func pollCmd(interval time.Duration) tea.Cmd {

@@ -76,6 +76,57 @@ func TestBuildDisplayListCapsAt60(t *testing.T) {
 	}
 }
 
+func TestBuildDisplayListFilterByPort(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	m.cumulative = map[string]float64{
+		"node (123)":     50.0,
+		"postgres (456)": 30.0,
+		"sshd (789)":     10.0,
+	}
+	m.latestPorts = map[string][]int{
+		"node (123)":     {3000, 8080},
+		"postgres (456)": {5432},
+	}
+
+	m.filter = "300"
+	list := m.buildDisplayList()
+	if len(list) != 1 || list[0].name != "node (123)" {
+		t.Errorf("filter \"300\" expected node (123), got %v", list)
+	}
+
+	m.filter = "5432"
+	list = m.buildDisplayList()
+	if len(list) != 1 || list[0].name != "postgres (456)" {
+		t.Errorf("filter \"5432\" expected postgres (456), got %v", list)
+	}
+
+	m.filter = "node"
+	list = m.buildDisplayList()
+	if len(list) != 1 || list[0].name != "node (123)" {
+		t.Errorf("filter \"node\" expected node (123), got %v", list)
+	}
+
+	m.filter = "9999"
+	list = m.buildDisplayList()
+	if len(list) != 0 {
+		t.Errorf("filter \"9999\" expected empty, got %v", list)
+	}
+}
+
+func TestBuildDisplayListProjectsPorts(t *testing.T) {
+	m := newModel(make(map[string]struct{}), "")
+	m.cumulative = map[string]float64{"node (123)": 50.0}
+	m.latestPorts = map[string][]int{"node (123)": {3000, 8080}}
+
+	list := m.buildDisplayList()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(list))
+	}
+	if len(list[0].ports) != 2 || list[0].ports[0] != 3000 || list[0].ports[1] != 8080 {
+		t.Errorf("expected ports [3000 8080], got %v", list[0].ports)
+	}
+}
+
 func TestBuildDisplayListEmptyCumulative(t *testing.T) {
 	m := newModel(make(map[string]struct{}), "")
 	list := m.buildDisplayList()
