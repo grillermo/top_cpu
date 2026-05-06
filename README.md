@@ -2,6 +2,9 @@
 
 Real-time TUI showing cumulative CPU usage per process. Aggregates `ps` output every 2 seconds so short-lived spikes accumulate over time. Lets you exclude noisy processes permanently.
 
+<img width="892" height="626" alt="CleanShot 2026-05-05 at 22 51 15@2x" src="https://github.com/user-attachments/assets/4fd24954-5378-4d3c-baf7-d726cedaf2f3" />
+
+
 ## Requirements
 
 - macOS (uses `ps -eo %cpu,comm`)
