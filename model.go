@@ -20,6 +20,7 @@ type procEntry struct {
 	name  string
 	cpu   float64
 	ports []int
+	pid   string
 }
 
 const (
@@ -30,6 +31,7 @@ const (
 type model struct {
 	cumulative   map[string]float64
 	latestPorts  map[string][]int
+	latestPID    map[string]string
 	excluded     map[string]struct{}
 	excludedPath string
 	filter       string
@@ -56,6 +58,7 @@ func newModel(excluded map[string]struct{}, excludedPath string) model {
 	return model{
 		cumulative:   make(map[string]float64),
 		latestPorts:  make(map[string][]int),
+		latestPID:    make(map[string]string),
 		excluded:     excluded,
 		excludedPath: excludedPath,
 		width:        80,
@@ -98,13 +101,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		nextPorts := make(map[string][]int, len(msg.entries))
+		nextPID := make(map[string]string, len(msg.entries))
 		for _, e := range msg.entries {
 			m.cumulative[e.name] += e.cpu
 			if len(e.ports) > 0 {
 				nextPorts[e.name] = e.ports
 			}
+			nextPID[e.name] = e.pid
 		}
 		m.latestPorts = nextPorts
+		m.latestPID = nextPID
 		m.displayList = m.buildDisplayList()
 		m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 		m.offset = m.syncedOffset()
@@ -286,7 +292,7 @@ func (m model) View() string {
 		return sb.String()
 	}
 
-	header := fmt.Sprintf("  %-8s  %-9s  %-20s  %s", "Position", "CPU Usage", "Port", "Process Name")
+	header := fmt.Sprintf("  %-8s  %-9s  %-7s  %-20s  %s", "Position", "CPU Usage", "PID", "Port", "Process Name")
 	sb.WriteString(headerStyle.Render(header))
 	sb.WriteString("\n")
 
@@ -297,7 +303,7 @@ func (m model) View() string {
 	for i := m.offset; i < end; i++ {
 		p := m.displayList[i]
 		prefix := "  "
-		line := fmt.Sprintf("%-8d  %8.1f%%  %-20s  %s", i+1, p.cpu, formatPorts(p.ports), p.name)
+		line := fmt.Sprintf("%-8d  %8.1f%%  %-7s  %-20s  %s", i+1, p.cpu, p.pid, formatPorts(p.ports), p.name)
 		switch {
 		case p.name == m.selected:
 			prefix = "★ "
@@ -358,6 +364,7 @@ func (m model) buildDisplayList() []procEntry {
 		name  string
 		cpu   float64
 		ports []int
+		pid   string
 	}
 	filterLower := strings.ToLower(m.filter)
 	all := make([]kv, 0, len(m.cumulative))
@@ -369,7 +376,7 @@ func (m model) buildDisplayList() []procEntry {
 		if filterLower != "" && !matchesFilter(name, ports, filterLower) {
 			continue
 		}
-		all = append(all, kv{name, cpu, ports})
+		all = append(all, kv{name, cpu, ports, m.latestPID[name]})
 	}
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].cpu > all[j].cpu
@@ -379,7 +386,7 @@ func (m model) buildDisplayList() []procEntry {
 	}
 	result := make([]procEntry, len(all))
 	for i, kv := range all {
-		result[i] = procEntry{name: kv.name, cpu: kv.cpu, ports: kv.ports}
+		result[i] = procEntry{name: kv.name, cpu: kv.cpu, ports: kv.ports, pid: kv.pid}
 	}
 	return result
 }
