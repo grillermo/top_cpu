@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,7 +14,6 @@ import (
 )
 
 const (
-	displayLimit = 60
 	pollInterval = 2 * time.Second
 )
 
@@ -194,6 +195,14 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selected = m.displayList[m.cursor].name
 		}
 
+	case tea.KeyF2:
+		if m.selected != "" {
+			if pid, err := strconv.Atoi(m.latestPID[m.selected]); err == nil {
+				syscall.Kill(pid, syscall.SIGKILL)
+			}
+			m.selected = ""
+		}
+
 	case tea.KeyF1:
 		if m.selected != "" {
 			next := make(map[string]struct{}, len(m.excluded)+1)
@@ -211,17 +220,17 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.offset = m.syncedOffset()
 		}
 
-	case tea.KeyF4:
-		m.filtering = true
-
 	case tea.KeyEsc:
 		if m.selected != "" {
 			m.selected = ""
 		}
 
 	case tea.KeyRunes:
-		if msg.String() == "q" {
+		switch msg.String() {
+		case "q":
 			return m, tea.Quit
+		case "/":
+			m.filtering = true
 		}
 	}
 	return m, nil
@@ -320,11 +329,11 @@ func (m model) View() string {
 	var help string
 	switch {
 	case m.selected != "":
-		help = "↑↓ navigate  F1 exclude selected  Esc deselect  ←→ tabs  q quit"
+		help = "↑↓ navigate  F1 exclude  F2 kill  Esc deselect  ←→ tabs  q quit"
 	case m.filtering:
 		help = "type to filter  Backspace  Esc exit filter"
 	default:
-		help = "↑↓ navigate  Enter select  F4 filter  ←→ tabs  q quit"
+		help = "↑↓ navigate  Enter select  / filter  ←→ tabs  q quit"
 	}
 	sb.WriteString(helpStyle.Render(help))
 
@@ -381,9 +390,6 @@ func (m model) buildDisplayList() []procEntry {
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].cpu > all[j].cpu
 	})
-	if len(all) > displayLimit {
-		all = all[:displayLimit]
-	}
 	result := make([]procEntry, len(all))
 	for i, kv := range all {
 		result[i] = procEntry{name: kv.name, cpu: kv.cpu, ports: kv.ports, pid: kv.pid}

@@ -45,3 +45,7 @@ File responsibilities:
 **Timeline tab:** time range `Today` / `This Week` / `All Time`, cycle with `t`. Manual refresh `r`. Auto-refreshes every 60s via `timelineRefreshTickMsg` while active. Empty state when DB missing prompts `top_cpu --daemon`.
 
 **Tests cover pure functions and store:** `parsePS`, `buildDisplayList`, `loadExclusions`/`appendExclusion`, `clamp`, `Store.Insert`/`QueryTopN`/`Purge`. No tests for `Update`/`View`/`renderTimeline` (Bubble Tea integration, asciigraph rendering).
+
+## Development flow
+
+* After each change build the app

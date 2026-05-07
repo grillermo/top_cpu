@@ -64,15 +64,15 @@ func TestBuildDisplayListFilterCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestBuildDisplayListCapsAt60(t *testing.T) {
+func TestBuildDisplayListShowsAll(t *testing.T) {
 	m := newModel(make(map[string]struct{}), "")
 	m.cumulative = make(map[string]float64)
 	for i := 0; i < 100; i++ {
 		m.cumulative[fmt.Sprintf("proc%d", i)] = float64(i)
 	}
 	list := m.buildDisplayList()
-	if len(list) != 60 {
-		t.Errorf("expected 60 entries (display limit), got %d", len(list))
+	if len(list) != 100 {
+		t.Errorf("expected 100 entries (no display limit), got %d", len(list))
 	}
 }
 
