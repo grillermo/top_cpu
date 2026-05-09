@@ -200,7 +200,13 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if pid, err := strconv.Atoi(m.latestPID[m.selected]); err == nil {
 				syscall.Kill(pid, syscall.SIGKILL)
 			}
+			delete(m.cumulative, m.selected)
+			delete(m.latestPorts, m.selected)
+			delete(m.latestPID, m.selected)
 			m.selected = ""
+			m.displayList = m.buildDisplayList()
+			m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
+			m.offset = m.syncedOffset()
 		}
 
 	case tea.KeyF1:
@@ -247,6 +253,24 @@ func (m model) updateFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.displayList = m.buildDisplayList()
 		m.cursor = clamp(m.cursor, 0, len(m.displayList)-1)
 		m.offset = m.syncedOffset()
+
+	case tea.KeyEnter:
+		if len(m.displayList) > 0 {
+			m.selected = m.displayList[m.cursor].name
+			m.filtering = false
+		}
+
+	case tea.KeyUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.offset = m.syncedOffset()
+		}
+
+	case tea.KeyDown:
+		if m.cursor < len(m.displayList)-1 {
+			m.cursor++
+			m.offset = m.syncedOffset()
+		}
 
 	case tea.KeyBackspace:
 		if len(m.filter) > 0 {
@@ -331,7 +355,7 @@ func (m model) View() string {
 	case m.selected != "":
 		help = "↑↓ navigate  F1 exclude  F2 kill  Esc deselect  ←→ tabs  q quit"
 	case m.filtering:
-		help = "type to filter  Backspace  Esc exit filter"
+		help = "↑↓ navigate  Enter select  type to filter  Backspace  Esc exit filter"
 	default:
 		help = "↑↓ navigate  Enter select  / filter  ←→ tabs  q quit"
 	}
