@@ -31,6 +31,7 @@ const (
 
 type model struct {
 	cumulative   map[string]float64
+	sampleCount  map[string]int
 	latestPorts  map[string][]int
 	latestPID    map[string]string
 	excluded     map[string]struct{}
@@ -58,6 +59,7 @@ var (
 func newModel(excluded map[string]struct{}, excludedPath string) model {
 	return model{
 		cumulative:   make(map[string]float64),
+		sampleCount:  make(map[string]int),
 		latestPorts:  make(map[string][]int),
 		latestPID:    make(map[string]string),
 		excluded:     excluded,
@@ -105,6 +107,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nextPID := make(map[string]string, len(msg.entries))
 		for _, e := range msg.entries {
 			m.cumulative[e.name] += e.cpu
+			m.sampleCount[e.name]++
 			if len(e.ports) > 0 {
 				nextPorts[e.name] = e.ports
 			}
@@ -201,6 +204,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				syscall.Kill(pid, syscall.SIGKILL)
 			}
 			delete(m.cumulative, m.selected)
+			delete(m.sampleCount, m.selected)
 			delete(m.latestPorts, m.selected)
 			delete(m.latestPID, m.selected)
 			m.selected = ""
@@ -325,7 +329,7 @@ func (m model) View() string {
 		return sb.String()
 	}
 
-	header := fmt.Sprintf("  %-8s  %-9s  %-7s  %-20s  %s", "Position", "CPU Usage", "PID", "Port", "Process Name")
+	header := fmt.Sprintf("  %-8s  %-9s  %-7s  %-20s  %s", "Position", "Avg CPU%", "PID", "Port", "Process Name")
 	sb.WriteString(headerStyle.Render(header))
 	sb.WriteString("\n")
 
@@ -401,7 +405,7 @@ func (m model) buildDisplayList() []procEntry {
 	}
 	filterLower := strings.ToLower(m.filter)
 	all := make([]kv, 0, len(m.cumulative))
-	for name, cpu := range m.cumulative {
+	for name, sum := range m.cumulative {
 		if _, ok := m.excluded[name]; ok {
 			continue
 		}
@@ -409,6 +413,7 @@ func (m model) buildDisplayList() []procEntry {
 		if filterLower != "" && !matchesFilter(name, ports, filterLower) {
 			continue
 		}
+		cpu := sum / float64(m.sampleCount[name])
 		all = append(all, kv{name, cpu, ports, m.latestPID[name]})
 	}
 	sort.Slice(all, func(i, j int) bool {

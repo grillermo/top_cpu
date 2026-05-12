@@ -12,6 +12,7 @@ func TestBuildDisplayListFiltersExcluded(t *testing.T) {
 		"node":    30.0,
 		"bash":    10.0,
 	}
+	m.sampleCount = map[string]int{"firefox": 1, "node": 1, "bash": 1}
 	list := m.buildDisplayList()
 
 	for _, p := range list {
@@ -31,6 +32,7 @@ func TestBuildDisplayListSortedDescending(t *testing.T) {
 		"b": 50.0,
 		"c": 30.0,
 	}
+	m.sampleCount = map[string]int{"a": 1, "b": 1, "c": 1}
 	list := m.buildDisplayList()
 
 	if len(list) != 3 {
@@ -53,6 +55,7 @@ func TestBuildDisplayListFilterCaseInsensitive(t *testing.T) {
 		"Firefox": 50.0,
 		"node":    30.0,
 	}
+	m.sampleCount = map[string]int{"Firefox": 1, "node": 1}
 	m.filter = "fire"
 	list := m.buildDisplayList()
 
@@ -67,8 +70,10 @@ func TestBuildDisplayListFilterCaseInsensitive(t *testing.T) {
 func TestBuildDisplayListShowsAll(t *testing.T) {
 	m := newModel(make(map[string]struct{}), "")
 	m.cumulative = make(map[string]float64)
+	m.sampleCount = make(map[string]int)
 	for i := 0; i < 100; i++ {
 		m.cumulative[fmt.Sprintf("proc%d", i)] = float64(i)
+		m.sampleCount[fmt.Sprintf("proc%d", i)] = 1
 	}
 	list := m.buildDisplayList()
 	if len(list) != 100 {
@@ -83,6 +88,7 @@ func TestBuildDisplayListFilterByPort(t *testing.T) {
 		"postgres (456)": 30.0,
 		"sshd (789)":     10.0,
 	}
+	m.sampleCount = map[string]int{"node (123)": 1, "postgres (456)": 1, "sshd (789)": 1}
 	m.latestPorts = map[string][]int{
 		"node (123)":     {3000, 8080},
 		"postgres (456)": {5432},
@@ -116,6 +122,7 @@ func TestBuildDisplayListFilterByPort(t *testing.T) {
 func TestBuildDisplayListProjectsPorts(t *testing.T) {
 	m := newModel(make(map[string]struct{}), "")
 	m.cumulative = map[string]float64{"node (123)": 50.0}
+	m.sampleCount = map[string]int{"node (123)": 1}
 	m.latestPorts = map[string][]int{"node (123)": {3000, 8080}}
 
 	list := m.buildDisplayList()
